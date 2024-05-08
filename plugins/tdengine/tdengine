@@ -1,0 +1,99 @@
+#!/usr/bin/python2
+# -*- python -*-
+import os
+import sys
+import taos
+
+def taos_connect(host, port, user, passwd):
+    # all parameters are optional.
+    # if database is specified,
+    # then it must exist.
+    conn = taos.connect(host=host, port=int(port), user=user, password=passwd, database="log")
+    return conn
+
+if __name__ == "__main__":
+    host = os.getenv('host', 'localhost')
+    port = os.getenv('port', 6030)
+    user = os.getenv('user', 'root')
+    pwd = os.getenv('password', 'taosdata')
+
+    conn = taos_connect(host, port, user, pwd)
+
+    result = conn.query("SELECT * FROM slowquery;")
+    print "multigraph slow_query"
+    print "graph_category tdengine"
+    print "graph_title slow query"
+    print "graph_vlabel slow query"
+    print "slow_query.label slow query"
+    print "slow_query.value {}".format(result.row_count)
+
+    q_cluster = conn.query("select dnodes_total,vgroups_total from cluster_info order by ts desc limit 1;")
+    cluster_info = q_cluster.fetch_all_into_dict()
+    if len(cluster_info) <= 0: sys.exit(0)
+
+    props = {
+        'uptime': {
+            'vlabel': 'sec',
+            'items': [ 'uptime' ]
+        },
+        'cpu_usage': {
+            'vlabel': '%',
+            'items': [ 'cpu_engine', 'cpu_system' ]
+        },
+        'memory_usage': {
+            'vlabel': 'Used memory',
+            'items': ['mem_engine', 'mem_system', 'mem_total']
+        },
+        'io': {
+            'vlabel': 'byte/s',
+            'items': ['io_read', 'io_write', 'io_read_disk', 'io_write_disk']
+        },
+        'disk_usage': {
+            'vlabel': 'bytes',
+            'items': ['disk_engine', 'disk_used', 'disk_total']
+        },
+        'net': {
+            'vlabel': 'byte/s',
+            'items': ['net_in', 'net_out']
+        }
+    }
+
+    _columns = []
+
+    for p in props.values(): _columns.extend(p.get('items'))
+
+    for i in range(cluster_info[0].get('dnodes_total')):
+        _table = 'dnode_{}'.format(i+1)
+
+        q_dnode = conn.query("select ts,{} from {} order by ts desc limit 1;".format(','.join(_columns), _table))
+        dnode_info = q_dnode.fetch_all_into_dict()
+        if len(dnode_info) <= 0: continue
+
+        for _title, _item in props.items():
+            print "multigraph {}".format(_title)
+            print "graph_category tdengine"
+            print "graph_title {}".format(_title)
+            print "graph_info ts_{}".format(dnode_info[0].get('ts').strftime('%Y-%m-%d %H:%M:%S'))
+            print "graph_vlabel {}".format(_item.get('vlabel'))
+
+            for k in _item.get('items'):
+                print "{}.label {}".format(k, k)
+                print "{}.value {}".format(k, dnode_info[0].get(k))
+
+    conn.close()
+
+'''
+    print "multigraph cc"
+    print "graph_category tdengine"
+    print "graph_title aaaa1"
+    print "graph_vlabel aaaa2"
+    print "graph_info This is aaaa"
+    print "cccc.label cccc" 
+    print "cccc.value 42"
+    print "multigraph bb"
+    print "graph_category tdengine"
+    print "graph_title bbb1"
+    print "graph_vlabel bbb22"
+    print "bbb.label bbb"
+    print "bbb.value 41"
+'''
